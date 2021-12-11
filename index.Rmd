@@ -46,7 +46,7 @@ class_diag <- function(score, truth, positive, cutoff=.5){
 
 # Mining, Classification, Prediction
 
-## Kush Patel and ksp946
+## Kush Patel, ksp946
 
 ### Introduction 
 
@@ -54,39 +54,187 @@ Paragraph or two introducing your datasets and variables, why they are interesti
 
 ```{R}
 library(tidyverse)
-# read your datasets in here, e.g., with read_csv()
-
-# if your dataset needs tidying, do so here
-
-# any other code here
+library(DAAG)
+car_data <- as.data.frame(nassCDS)
+tidycar <- car_data %>% select(-caseid, -abcat) %>% filter(occRole == "driver") %>% na.omit()
+set.seed(123)
+tidycar <- sample_n(tidycar, 150)
 ```
 
 ### Cluster Analysis
 
 ```{R}
 library(cluster)
-# clustering code here
+# selecting number of cluster
+tidycar%>%ggplot()+geom_point(aes(ageOFocc, yearVeh))
+
+wss<-vector()
+for(i in 1:10){
+temp<- tidycar %>% select(yearVeh,ageOFocc) %>% kmeans(i)
+wss[i]<-temp$tot.withinss
+}
+ggplot()+geom_point(aes(x=1:10,y=wss))+geom_path(aes(x=1:10,y=wss))+
+  xlab("clusters")+scale_x_continuous(breaks=1:10)
+
+# computing silhouette 
+clust_dat<-tidycar%>%dplyr::select(yearVeh,ageOFocc)
+
+sil_width<-vector() 
+for(i in 2:10){
+  kms <- kmeans(clust_dat,centers=i) #compute k-means solution for each k
+  sil <- silhouette(kms$cluster,dist(clust_dat)) #get sil widths
+  sil_width[i]<-mean(sil[,3]) #take averages (higher is better)
+}
+ggplot()+geom_line(aes(x=1:10,y=sil_width))+scale_x_continuous(name="k",breaks=1:10)
 ```
 
 Discussion of clustering here
     
-    
+```{R}
+set.seed(562) 
+pam1 <- clust_dat %>% pam(k=2) 
+pam1
+pamclust<-clust_dat %>% mutate(cluster=as.factor(pam1$clustering))
+pamclust %>% ggplot(aes(ageOFocc, yearVeh,color=cluster)) + geom_point()
+
+ pam1$silinfo$avg.width
+  plot(pam1,which=2)
+```
+
+*Silhouette width between 0.26-0.50 means that the structure is weak and could be artificial*
+
+```{R}
+#clustering with 3 or more variable 
+
+final <- tidycar %>% select(ageOFocc, yearVeh, deploy, injSeverity) %>% as.data.frame()
+pam2 <- final %>% pam(2)
+pam2
+final <- final %>% mutate(cluster=as.factor(pam2$clustering))
+ggplot(final, aes(x=ageOFocc,y=yearVeh, color=cluster))+geom_point()
+library(plotly)
+final%>%plot_ly(x= ~ageOFocc,  y = ~yearVeh, z = ~injSeverity, color= ~cluster, type = "scatter3d", mode = "markers")
+library(GGally)
+ggpairs(final, aes(color=cluster))
+```
+
+*discuss the graph here*
+
 ### Dimensionality Reduction with PCA
 
 ```{R}
 # PCA code here
+var1 <- tidycar %>% select(frontal, ageOFocc, yearVeh, deploy, injSeverity) %>% as.data.frame()
+var1 <- data.frame(scale(var1)) #scaling data
+
+
+pca1 <- prcomp(var1, center = T, scale = T)
+summary(pca1)
+eig1 <- var1 %>% cor %>% eigen()
+eig1 # eigen value and eigen vectors
+var1 %>% cor #correlation matrix
 ```
 
 Discussions of PCA here. 
 
+```{R}
+# How many PCs to keep?
+car_pca<-princomp(var1)
+eigval<- car_pca$sdev^2 
+varprop=round(eigval/sum(eigval), 2) 
+
+ggplot() + geom_bar(aes(y = varprop, x = 1:5), stat = "identity") + 
+    xlab("") + geom_path(aes(y = varprop, x = 1:5)) + geom_text(aes(x = 1:5, 
+    y = varprop, label = round(varprop, 2)), vjust = 1, col = "white", 
+    size = 5) + scale_y_continuous(breaks = seq(0, 0.6, 0.2), 
+    labels = scales::percent) + scale_x_continuous(breaks = 1:10)
+
+round(cumsum(eigval)/sum(eigval), 2)
+eigval
+
+cardf<-data.frame( PC1=car_pca$scores[, 1],PC2=car_pca$scores[, 2])
+ggplot(cardf, aes(PC1, PC2)) + geom_point()
+
+
+car_pca$scores[, 1:5] %>% as.data.frame %>% top_n(-3, Comp.1) #top 3lowest PC1
+car_pca$scores[, 1:5] %>% as.data.frame %>% top_n(3, Comp.1) #top 3highest PC1
+car_pca$scores[, 1:5] %>% as.data.frame %>% top_n(3, wt = desc(Comp.2)) #top 3 lowest PC2
+car_pca$scores[, 1:3] %>% as.data.frame %>% top_n(3, wt = Comp.2) #top 3 highest PC2
+
+
+```
+
+
 ###  Linear Classifier
 
 ```{R}
-# linear classifier code here
+y<-tidycar$airbag
+x<-tidycar$ageOFocc
+
+y_hat <- sample(c("airbag","none"), size=length(y), replace=T)
+tidycar %>% select(ageOFocc, airbag) %>% mutate(predict=y_hat) %>% head
+mean(y==y_hat) 
+
+ggplot(data.frame(x,y), aes(x))+geom_density(aes(fill=y), alpha=.5)
+ggplot(data.frame(x,y_hat), aes(x))+geom_density(aes(fill=y_hat), alpha=.5) 
+ 
+#confusion matrix 
+table(actual=y, predicted = y_hat) %>% addmargins
+
+
+actual <- c("problem", rep("no problem", 999))
+predicted <- rep("no problem", 1000)
+TPR <- mean(predicted[actual=="problem"]=="problem")
+TNR <- mean(predicted[actual=="no problem"]=="no problem")
+(TPR+TNR)/2
+
+#F1 score 
+F1 <- function(y, y_hat, positive){
+  sensitivity <- mean(y_hat[y==positive]==positive)
+  precision <- mean(y[y_hat==positive]==positive)
+  2*(sensitivity*precision)/(sensitivity+precision)
+}
+F1(y, y_hat, "airbag")
+
+n_distinct(tidycar$ageOFocc)
+F1score <- vector()
+cutoff <- 1:52
+for(i in cutoff){
+  y_hat <- ifelse(x>i, "airbag", "none")
+  F1score[i] <- F1(y_hat,y,"airbag")
+}
+qplot(y=F1score)+geom_line()+scale_x_continuous(breaks=1:52)
+
 ```
 
 ```{R}
-# cross-validation of linear classifier here
+# binary classification 
+class_diag(score = x,truth = y, positive = "airbag", cutoff = 16)
+
+#linear classification
+fit <- lm(deploy ~ ageOFocc, data=tidycar)
+score <- predict(fit)
+score %>% round(3)
+
+tidycar%>% mutate(score=score) %>% ggplot(aes(ageOFocc,deploy)) + geom_point(aes(color=score>.5))+
+  geom_smooth(method="lm", se=F)+ylim(0,1)+geom_hline(yintercept=.5, lty=2)
+
+#logistic regression
+class_diag(score,truth=tidycar$deploy, positive=1)
+fit <- glm(deploy ~ ageOFocc, data=tidycar, family="binomial")
+score <- predict(fit, type="response")
+score %>% round(3)
+tidycar%>% mutate(score=score) %>% ggplot(aes(ageOFocc,deploy))+geom_point(aes(color=score>.5))+
+  geom_smooth(method="glm", se=F,method.args = list(family = "binomial"))+ylim(0,1)+geom_hline(yintercept=.5, lty=2)
+
+
+```
+
+```{R}
+#predicting a binary variable (response) from ALL of the rest of the numeric variables in your dataset 
+num_data <- tidycar %>% select(deploy, ageOFocc, weight, frontal, yearacc, yearVeh, injSeverity)
+fit <- glm(deploy ~ ., data=num_data, family="binomial")
+score <- predict(fit, type="response")
+class_diag(score,tidycar$deploy,positive=1)
 ```
 
 Discussion here
@@ -95,11 +243,57 @@ Discussion here
 
 ```{R}
 library(caret)
-# non-parametric classifier code here
+knn_fit <- knn3(deploy == 1 ~ ., data = num_data)
+y_hat_knn <- predict(knn_fit,num_data)
+y_hat_knn
+class_diag(y_hat_knn[,2],num_data$deploy, positive=1)
+
 ```
 
 ```{R}
-# cross-validation of np classifier here
+#k-fold CV
+set.seed(312)
+k = 10 #choose number of folds
+data<-num_data[sample(nrow(num_data)),] #randomly order rows
+folds<-cut(seq(1:nrow(num_data)),breaks=k,labels=F) #create 10 folds
+diags<-NULL
+for(i in 1:k){
+  ## Create training and test sets
+  train<-data[folds!=i,]
+  test<-data[folds==i,]
+  truth<-test$deploy
+  ## Train model on training set
+  fit<-glm(deploy~.,data=num_data,family="binomial")
+  probs<-predict(fit,newdata = test,type="response")
+  ## Test model on test set (save all k results)
+  diags<-rbind(diags,class_diag(probs,truth, positive=1))
+}
+summarize_all(diags,mean)
+
+```
+
+
+```{R}
+# k-fold CV with kNN
+
+k=10 #choose number of folds
+data<-num_data[sample(nrow(num_data)),] #randomly order rows
+folds<-cut(seq(1:nrow(num_data)),breaks=k,labels=F) #create 10 folds
+diags<-NULL
+for(i in 1:k){
+  ## Create training and test sets
+  train<-data[folds!=i,]
+  test<-data[folds==i,]
+  truth<-test$deploy
+  ## Train model on training set
+  fit<-knn3(deploy~.,data=train)
+  probs<-predict(fit,newdata = test)[,2]
+  ## Test model on test set (save all k results)
+  diags<-rbind(diags,class_diag(probs,truth, positive=1))
+}
+summarize_all(diags,mean)
+
+
 ```
 
 Discussion
@@ -108,11 +302,41 @@ Discussion
 ### Regression/Numeric Prediction
 
 ```{R}
-# regression model code here
+# classification tree 
+library(rpart)
+library(rpart.plot)
+fit<- rpart(deploy~., data=num_data)
+rpart.plot(fit)
+fit <- train(deploy~., data=num_data, method="rpart")
+fit$bestTune
+rpart.plot(fit$finalModel)
+num_data %>% ggplot(aes(ageOFocc,yearVeh)) +geom_jitter(aes(color=deploy))
 ```
 
 ```{R}
-# cross-validation of regression model here
+fit<-lm(deploy~.,data=num_data) #predict deploy from all other variables
+yhat<-predict(fit) #predicted deploy
+mean((num_data$deploy-yhat)^2) #mean squared error (MSE)
+
+#cross validation with kNN Regression
+
+set.seed(1234)
+k=5 #choose number of folds
+data<-num_data %>% sample_frac() #randomly order rows
+folds<-cut(seq(1:nrow(num_data)),breaks=k,labels=F) #create folds
+diags<-NULL
+for(i in 1:k){
+  train<-data[folds!=i,]
+  test<-data[folds==i,]
+  ## Fit linear regression model to training set
+  fit<-knnreg(deploy~.,data=train)
+  ## Get predictions/y-hats on test set (fold i)
+  yhat<-predict(fit,newdata=test)
+  ## Compute prediction error  (MSE) for fold i
+  diags<-mean((test$deploy-yhat)^2)
+}
+mean(diags) 
+
 ```
 
 Discussion
@@ -121,10 +345,29 @@ Discussion
 
 ```{R}
 library(reticulate)
+use_python("/usr/bin/python3", required = F)
+py_install("pandas")
 ```
 
-```{python}
-# python code here
+```{python, error=TRUE, inlcude=TRUE}
+import pandas as pd
+pd.set_option('display.max_columns', None)
+
+ca = r.tidycar
+ca.head()
+
+
+filter_data = (ca.filter(['airbag', 'injSeverity'])
+ .query('airbag == "airbag"').head(10))
+filter_data
+#filtering in python
+```
+
+Discussion
+
+```{R}
+# converting python dataset again to R 
+py$filter_data
 ```
 
 Discussion
