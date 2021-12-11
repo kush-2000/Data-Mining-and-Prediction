@@ -50,7 +50,6 @@ class_diag <- function(score, truth, positive, cutoff=.5){
 
 ### Introduction 
 
-Paragraph or two introducing your datasets and variables, why they are interesting to you, etc. See instructions for more information
 
 ```{R}
 library(tidyverse)
@@ -60,6 +59,11 @@ tidycar <- car_data %>% select(-caseid, -abcat) %>% filter(occRole == "driver") 
 set.seed(123)
 tidycar <- sample_n(tidycar, 150)
 ```
+
+*This dataset is called "nassCDS" and it can be found in R under DAAG package. I found this data using following website: https://vincentarelbundock.github.io/Rdatasets/datasets.html . This is data of US police-reparted car crashed in which there is a harmful event, and from which at least one vehicle was towed. This data is collected form 1997-2002. The dataset contains 26217 observations with 15 variables. The variables are "dvcat" which is ordered factor with levels of estimated impact speeds. "weight," observation weights, designed to account for varying sampling probabilities. "dead" factor with levels alive or dead. "airbag" is a factor with levels none and airbag. "seatbelt" with factor levels none and belted. "frontal" is a numeric vector with 0 = non-frontal impact, 1= frontal impact, "ageOFocc" tells age of occupants in years. "yearacc" year of accident. "deploy" is a numeric vector with 0 if an airbag was unavailable or did not deploy, 1 if one or more bags deployed. "injSeverity" a numeric vector with 0-6 rating of injury*
+
+*The data was mostly tidy, I just removed all NAs from dataframe and also remove 'caseid' and 'abcat' variables as they are mostly not in use for the project. I also filtered to where data include just the driver who were injured, reduring other variables. Lastly since it was a huge dataset, I have randomly selected 150 observation for the rest of the project. *
+
 
 ### Cluster Analysis
 
@@ -88,7 +92,7 @@ for(i in 2:10){
 ggplot()+geom_line(aes(x=1:10,y=sil_width))+scale_x_continuous(name="k",breaks=1:10)
 ```
 
-Discussion of clustering here
+*Initially by looking at scatter plot, there is no visible pattern between clusters of "ageOFocc" and "yearVeh", I also chose these two dataset as I wanted to know if year of vehical a person drives is connected to the age of person when the accident occurred. The wss plot shows that the number of clusters which will be appropriate for this data is 2. By computing silhouette width, it shows the same pattern of clusters = 2*
     
 ```{R}
 set.seed(562) 
@@ -101,23 +105,25 @@ pamclust %>% ggplot(aes(ageOFocc, yearVeh,color=cluster)) + geom_point()
   plot(pam1,which=2)
 ```
 
-*Silhouette width between 0.26-0.50 means that the structure is weak and could be artificial*
+*By running pam analysis, I found that the average year of vehicle for cluster 1 is 1994 and the average age of accident is 26 for cluster1. I also found that the average year of vehicle for cluster 2 is 1996 and the average age of accident is 55 for cluster2. After plotting colored graph the difference between two cluster is clearly seen. The average Silhouette width is 0.52. Silhouette width between 0.51-0.70 means that a reasonable structure has been found. Silhouette width between 0.26-0.50 means that the structure is weak and could be artificial*
 
 ```{R}
 #clustering with 3 or more variable 
 
-final <- tidycar %>% select(ageOFocc, yearVeh, deploy, injSeverity) %>% as.data.frame()
+final <- tidycar %>% select(ageOFocc, yearVeh, deploy, injSeverity) %>% 
+    as.data.frame()
 pam2 <- final %>% pam(2)
 pam2
-final <- final %>% mutate(cluster=as.factor(pam2$clustering))
-ggplot(final, aes(x=ageOFocc,y=yearVeh, color=cluster))+geom_point()
-library(plotly)
-final%>%plot_ly(x= ~ageOFocc,  y = ~yearVeh, z = ~injSeverity, color= ~cluster, type = "scatter3d", mode = "markers")
+
+final <- final %>% mutate(cluster = as.factor(pam2$clustering))
+ggplot(final, aes(x = ageOFocc, y = yearVeh, color = cluster)) + 
+    geom_point()
+
 library(GGally)
 ggpairs(final, aes(color=cluster))
 ```
 
-*discuss the graph here*
+*I included another variable, "injSeverity" to plot a 3D graph which shows in detail the difference between these two cluster and relationship between 3 variables. Then I performed PAM clustering with 4 numeric variables. The variables that had highest correlation was "deploy" and "yearVeh", as there is a greater chance that the vehicle have airbag and it will deploy if the vehical is modern compared to older version of vehicle*
 
 ### Dimensionality Reduction with PCA
 
@@ -134,7 +140,7 @@ eig1 # eigen value and eigen vectors
 var1 %>% cor #correlation matrix
 ```
 
-Discussions of PCA here. 
+*The sd of PC1 is 1.2348 with variance of 0.315, whereas sd of PC2 is 1.0398 with variance of 0.217. Also noticed a trend where as PCs increases, the sd and variance is decreasing. The eigenvalue of PC1 is 1.652 and eigenvalue of PC2 is 1.066.*
 
 ```{R}
 # How many PCs to keep?
@@ -155,14 +161,14 @@ cardf<-data.frame( PC1=car_pca$scores[, 1],PC2=car_pca$scores[, 2])
 ggplot(cardf, aes(PC1, PC2)) + geom_point()
 
 
-car_pca$scores[, 1:5] %>% as.data.frame %>% top_n(-3, Comp.1) #top 3lowest PC1
-car_pca$scores[, 1:5] %>% as.data.frame %>% top_n(3, Comp.1) #top 3highest PC1
+car_pca$scores[, 1:5] %>% as.data.frame %>% top_n(-3, Comp.1) #top 3 lowest PC1
+car_pca$scores[, 1:5] %>% as.data.frame %>% top_n(3, Comp.1) #top 3 highest PC1
 car_pca$scores[, 1:5] %>% as.data.frame %>% top_n(3, wt = desc(Comp.2)) #top 3 lowest PC2
 car_pca$scores[, 1:3] %>% as.data.frame %>% top_n(3, wt = Comp.2) #top 3 highest PC2
 
 
 ```
-
+*Rule of thumb for picking PCs is to pick PCs until cumulative proportion of variance is > 80%. I have also summarize top annd bottom 3 PC1 and PC2. After plotting the scatter graph of PC1 vs PC2, the points looks like they average in a straight horizontal line (as expected)*
 
 ###  Linear Classifier
 
@@ -205,6 +211,7 @@ for(i in cutoff){
 qplot(y=F1score)+geom_line()+scale_x_continuous(breaks=1:52)
 
 ```
+*While observing the density graph of "airbag" variable, there is no visible difference between age of accident and airbag. There is jsut slight pattern towards the end where after age of 70, airbags decreases and none increases, maybe because older people are using old car which doesn't equip with airbags. Graph of y_hat is random. The confusion matrix tabulate actual vs predicted value of "airbag" variable. The F1 score is 0.52 which means there is no difference between airbag and none when compared with age. So according to the F1 plot, the cutoff should be around 16* 
 
 ```{R}
 # binary classification 
@@ -237,7 +244,7 @@ score <- predict(fit, type="response")
 class_diag(score,tidycar$deploy,positive=1)
 ```
 
-Discussion here
+*The AUC of binary classification is 0.53 which means the model is very bad. The AUC of logistic regression is not good either with 0.51. The lm and glm method graph is not proper (doesn't tell anything) as there is no visible pattern between age and having airbag or none in the car. But the AUC of glm model of all the numeric variable is 0.895 which is much much better then just "ageOFocc" and "airbag".*
 
 ### Non-Parametric Classifier
 
@@ -296,7 +303,7 @@ summarize_all(diags,mean)
 
 ```
 
-Discussion
+*I predicted the probability of true which means the vehical have airbags, or prob of false, which means beehical does not have airbags or all the 150 observation in the dataset using y_hat and knn fit. The knn analysis AUC is 0.779 which is not bad but it could be better. The AUC of k-fold CV is 0.895 which is very good compared to other AUCs. The AUC of k-fold CV with kNN is 0.547 which is worst then k-fold CV, we can see that doing k-fold with kNN analysis our AUC have gone down drastically.*
 
 
 ### Regression/Numeric Prediction
@@ -339,7 +346,7 @@ mean(diags)
 
 ```
 
-Discussion
+*I produced classification tree for the numeric variable in the dataset. It gives the probability of occurrence if the value of variable is true. And the total probability all the end adds up to 1. The cp of the fit is 0.187. Next, I plotter scatter plot of ageOFacc vs. yearVeh with color of deploy. The graph tells that majority of airbags are deployed if the vehicle's year is 1995 or newer. The MSE of data is 0.144. The mean diags of cross validation with kNN regression is 0.209, which is greater than MSE which means our model is doing well.*
 
 ### Python 
 
@@ -363,18 +370,19 @@ filter_data
 #filtering in python
 ```
 
-Discussion
+
 
 ```{R}
 # converting python dataset again to R 
 py$filter_data
 ```
 
-Discussion
+*For python chuck of code in R-markdown, I install pandas and reticulate package. I converted R dataset to python using r. and filtered the data using .filter function. Then I also converted python dataset to R dataset using py$*
+
 
 ### Concluding Remarks
 
-Include concluding remarks here, if any
+*This was very interesting data to work to as it had many valuable variables. Overall I saw the trend that for scatter plot of "ageOFocc" vs "vearVeh" variables, there is two possible clusters. Although the linear classifier for "airbag" variable was not predictable (no trend seen), by using all numeric variable, I still got good AUC of 0.89 compared to other AUCs in this project. Lastly it was very interesting to see python and R working side by side as each of them have their own benefits and drawbacks.*
 
 
 
